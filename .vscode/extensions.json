@@ -1,0 +1,21 @@
+{
+  "recommendations": [
+    "usernamehw.errorlens",
+    "bungcip.better-toml",
+    "streetsidesoftware.code-spell-checker",
+    "vadimcn.vscode-lldb",
+    "serayuzgur.crates",
+    "editorconfig.editorconfig",
+    "codezombiech.gitignore",
+    "eamodio.gitlens",
+    "davidanson.vscode-markdownlint",
+    "swellaby.vscode-rust-test-adapter",
+    "rust-lang.rust-analyzer",
+    "ms-vscode.test-adapter-converter",
+    "hbenl.vscode-test-explorer",
+    "gruntfuggly.todo-tree",
+    "redhat.vscode-yaml",
+    "kevinkassimo.cargo-toml-snippets",
+    "wayou.vscode-todo-highlight"
+  ]
+}
