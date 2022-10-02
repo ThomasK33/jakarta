@@ -24,7 +24,7 @@ impl<'a> Jakarta<'a> {
     ) -> Result<Self, JakartaError> {
         Ok(Self {
             interpolation_regex: Regex::new(
-                r"\$\{(?:\s*(?P<command>[a-zA-Z0-9-_]+)\s*:\s*(?P<path>[^{}]+?)\s*(?:(#|\?)(?P<field>[^{}]*?)){0,1}?(?:(:)(?P<default_value>.+)){0,1}\s*?){0,1}}",
+                r"\$(?P<exclude>\$){0,1}\{(?:\s*(?P<command>[^:]+)\s*:\s*(?P<path>[^{}]+?)\s*(?:(?:#|\?)(?P<field>[^{}]*?)){0,1}?(?:(?::)(?P<default_value>.+)){0,1}\s*?){0,1}}",
             )?,
             command_map,
         })
@@ -34,14 +34,24 @@ impl<'a> Jakarta<'a> {
         let mut interpolated_string = original;
 
         while self.interpolation_regex.is_match(&interpolated_string) {
-            interpolated_string = self.replace_values(&interpolated_string).await;
+            let (replaced_string, exclusion_only) = self.replace_values(&interpolated_string).await;
+
+            interpolated_string = replaced_string;
+
+            if exclusion_only {
+                break;
+            }
         }
+
+        interpolated_string = self.replace_exclusions(&interpolated_string);
 
         interpolated_string
     }
 
-    async fn replace_values(&self, interpolated_string: &str) -> String {
+    async fn replace_values(&self, interpolated_string: &str) -> (String, bool) {
         let mut resulting_string = interpolated_string.to_owned();
+
+        let mut exclusion_only = true;
 
         for value in self.interpolation_regex.captures_iter(interpolated_string) {
             let matched_full_string = match value.get(0) {
@@ -50,6 +60,12 @@ impl<'a> Jakarta<'a> {
                     continue;
                 }
             };
+
+            if value.name("exclude").is_some() {
+                continue;
+            } else {
+                exclusion_only = false;
+            }
 
             let value = if let Some(command) = value.name("command") {
                 if let Some(path) = value.name("path") {
@@ -82,6 +98,30 @@ impl<'a> Jakarta<'a> {
             };
 
             resulting_string = resulting_string.replace(matched_full_string, value.as_str());
+        }
+
+        (resulting_string, exclusion_only)
+    }
+
+    fn replace_exclusions(&self, interpolated_string: &str) -> String {
+        let mut resulting_string = interpolated_string.to_owned();
+
+        for value in self.interpolation_regex.captures_iter(interpolated_string) {
+            let matched_full_string = match value.get(0) {
+                Some(value) => value.as_str(),
+                None => {
+                    continue;
+                }
+            };
+
+            if let Some(value) = value.name("exclude") {
+                resulting_string = resulting_string.replace(
+                    matched_full_string,
+                    matched_full_string
+                        .strip_prefix(value.as_str())
+                        .unwrap_or(matched_full_string),
+                );
+            }
         }
 
         resulting_string
@@ -186,5 +226,44 @@ mod tests {
         assert_eq!(result, "asd 123 my default value".to_owned());
 
         assert_eq!(test_cmd.lock().await.counter, 5);
+    }
+
+    #[tokio::test]
+    async fn it_skips_excluded_interpolates() {
+        use async_trait::async_trait;
+
+        struct TestCommand {}
+
+        #[async_trait]
+        impl JakartaCommand for TestCommand {
+            async fn process(
+                &mut self,
+                command: String,
+                path: String,
+                _field: Option<String>,
+                default_value: Option<String>,
+            ) -> String {
+                if command == "test" {
+                    path
+                } else if command == "test_2" {
+                    default_value.unwrap_or("default".to_owned())
+                } else {
+                    "".to_owned()
+                }
+            }
+        }
+
+        let mut commands: HashMap<&str, Arc<Mutex<dyn JakartaCommand>>> = HashMap::new();
+
+        let test_cmd = Arc::new(Mutex::new(TestCommand {}));
+        commands.insert("test", test_cmd.clone());
+        commands.insert("test_2", test_cmd.clone());
+        let jakarta = Jakarta::new(commands).unwrap();
+
+        let result = jakarta
+            .interpolate_string("asd $${test:123}".to_owned())
+            .await;
+
+        assert_eq!(result, "asd ${test:123}".to_owned());
     }
 }
