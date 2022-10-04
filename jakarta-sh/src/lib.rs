@@ -12,13 +12,22 @@ impl jakarta::JakartaCommand for ShCommand {
     ) -> String {
         let cmd = std::process::Command::new("sh")
             .arg("-c")
-            .arg(args)
+            .arg(args.clone())
             .output();
 
         match cmd {
-            Ok(cmd) => String::from_utf8(cmd.stdout)
-                .unwrap_or_else(|_| default_value.unwrap_or_else(|| "".to_owned())),
-            Err(_) => default_value.unwrap_or_else(|| "".to_owned()),
+            Ok(cmd) => String::from_utf8(cmd.stdout).unwrap_or_else(|_| {
+                tracing::warn!(
+                    "Could not obtain stdout from process {args:?}, resolving to default value"
+                );
+
+                default_value.unwrap_or_else(|| "".to_owned())
+            }),
+            Err(err) => {
+                tracing::warn!("Failed to execute process {args:?}: {err}");
+
+                default_value.unwrap_or_else(|| "".to_owned())
+            }
         }
     }
 }
