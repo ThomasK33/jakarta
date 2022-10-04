@@ -5,7 +5,7 @@ pub struct EnvCommand {}
 #[async_trait]
 impl jakarta::JakartaCommand for EnvCommand {
     async fn process(&mut self, _: String, args: String, default_value: Option<String>) -> String {
-        std::env::var(args).unwrap_or_else(|args| {
+        std::env::var(args.clone()).unwrap_or_else(|_| {
             tracing::warn!("Could not get environment variable {args}, resolving to default value");
 
             default_value.unwrap_or_else(|| "".to_owned())
