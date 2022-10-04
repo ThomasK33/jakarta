@@ -24,7 +24,7 @@ impl<'a> Jakarta<'a> {
     ) -> Result<Self, JakartaError> {
         Ok(Self {
             interpolation_regex: Regex::new(
-                r"\$(?P<exclude>\$){0,1}\{(?:\s*(?P<command>[^:]+)\s*:\s*(?P<path>[^{}]+?)\s*(?:(?:#|\?)(?P<field>[^{}]*?)){0,1}?(?:(?::)(?P<default_value>.+)){0,1}\s*?){0,1}}",
+                r"\$(?P<exclude>\$){0,1}\{(?:\s*(?P<command>[^:]+)\s*:\s*(?P<args>[^{}]+?)\s*(?:(?::-)(?P<default_value>.+)){0,1}\s*?){0,1}}",
             )?,
             command_map,
         })
@@ -68,10 +68,9 @@ impl<'a> Jakarta<'a> {
             }
 
             let value = if let Some(command) = value.name("command") {
-                if let Some(path) = value.name("path") {
+                if let Some(args) = value.name("args") {
                     let command_id = command.as_str();
-                    let path = path.as_str();
-                    let field = value.name("field").map(|field| field.as_str());
+                    let args = args.as_str();
                     let default_value = value
                         .name("default_value")
                         .map(|default_value| default_value.as_str());
@@ -82,8 +81,7 @@ impl<'a> Jakarta<'a> {
                             .await
                             .process(
                                 command_id.to_owned(),
-                                path.to_owned(),
-                                field.map(|f| f.to_owned()),
+                                args.to_owned(),
                                 default_value.map(|dv| dv.to_owned()),
                             )
                             .await
@@ -132,6 +130,27 @@ impl<'a> Jakarta<'a> {
 mod tests {
     use super::*;
 
+    use async_trait::async_trait;
+    struct TestCommand {}
+
+    #[async_trait]
+    impl JakartaCommand for TestCommand {
+        async fn process(
+            &mut self,
+            command: String,
+            args: String,
+            default_value: Option<String>,
+        ) -> String {
+            if command == "test" {
+                args
+            } else if command == "test_2" {
+                default_value.unwrap_or("default".to_owned())
+            } else {
+                "".to_owned()
+            }
+        }
+    }
+
     #[test]
     fn it_instantiates_new() {
         let _ = Jakarta::new(HashMap::new());
@@ -139,23 +158,6 @@ mod tests {
 
     #[test]
     fn it_registers_commands() {
-        use async_trait::async_trait;
-
-        struct TestCommand {}
-
-        #[async_trait]
-        impl JakartaCommand for TestCommand {
-            async fn process(
-                &mut self,
-                _command: String,
-                _path: String,
-                _field: Option<String>,
-                _default_value: Option<String>,
-            ) -> String {
-                "".to_owned()
-            }
-        }
-
         let mut commands: HashMap<&str, Arc<Mutex<dyn JakartaCommand>>> = HashMap::new();
         let test_cmd = Arc::new(Mutex::new(TestCommand {}));
         commands.insert("test", test_cmd);
@@ -175,36 +177,9 @@ mod tests {
 
     #[tokio::test]
     async fn it_registers_interpolates_using_command() {
-        use async_trait::async_trait;
-
-        struct TestCommand {
-            counter: u8,
-        }
-
-        #[async_trait]
-        impl JakartaCommand for TestCommand {
-            async fn process(
-                &mut self,
-                command: String,
-                path: String,
-                _field: Option<String>,
-                default_value: Option<String>,
-            ) -> String {
-                self.counter += 1;
-
-                if command == "test" {
-                    path
-                } else if command == "test_2" {
-                    default_value.unwrap_or("default".to_owned())
-                } else {
-                    "".to_owned()
-                }
-            }
-        }
-
         let mut commands: HashMap<&str, Arc<Mutex<dyn JakartaCommand>>> = HashMap::new();
 
-        let test_cmd = Arc::new(Mutex::new(TestCommand { counter: 0 }));
+        let test_cmd = Arc::new(Mutex::new(TestCommand {}));
         commands.insert("test", test_cmd.clone());
         commands.insert("test_2", test_cmd.clone());
         let jakarta = Jakarta::new(commands).unwrap();
@@ -221,38 +196,13 @@ mod tests {
         assert_eq!(result, "asd 123 default".to_owned());
 
         let result = jakarta
-            .interpolate_string("asd ${test:123} ${test_2:123:my default value}".to_owned())
+            .interpolate_string("asd ${test:123} ${test_2:123:-my default value}".to_owned())
             .await;
         assert_eq!(result, "asd 123 my default value".to_owned());
-
-        assert_eq!(test_cmd.lock().await.counter, 5);
     }
 
     #[tokio::test]
     async fn it_skips_excluded_interpolates() {
-        use async_trait::async_trait;
-
-        struct TestCommand {}
-
-        #[async_trait]
-        impl JakartaCommand for TestCommand {
-            async fn process(
-                &mut self,
-                command: String,
-                path: String,
-                _field: Option<String>,
-                default_value: Option<String>,
-            ) -> String {
-                if command == "test" {
-                    path
-                } else if command == "test_2" {
-                    default_value.unwrap_or("default".to_owned())
-                } else {
-                    "".to_owned()
-                }
-            }
-        }
-
         let mut commands: HashMap<&str, Arc<Mutex<dyn JakartaCommand>>> = HashMap::new();
 
         let test_cmd = Arc::new(Mutex::new(TestCommand {}));

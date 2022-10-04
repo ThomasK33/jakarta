@@ -7,13 +7,12 @@ impl jakarta::JakartaCommand for ShCommand {
     async fn process(
         &mut self,
         _command: String,
-        path: String,
-        _field: Option<String>,
+        args: String,
         default_value: Option<String>,
     ) -> String {
         let cmd = std::process::Command::new("sh")
             .arg("-c")
-            .arg(path)
+            .arg(args)
             .output();
 
         match cmd {

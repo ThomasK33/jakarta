@@ -5,8 +5,7 @@ pub trait JakartaCommand {
     async fn process(
         &mut self,
         command: String,
-        path: String,
-        field: Option<String>,
+        args: String,
         default_value: Option<String>,
     ) -> String;
 }

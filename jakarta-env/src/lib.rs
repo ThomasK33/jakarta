@@ -4,14 +4,8 @@ pub struct EnvCommand {}
 
 #[async_trait]
 impl jakarta::JakartaCommand for EnvCommand {
-    async fn process(
-        &mut self,
-        _: String,
-        path: String,
-        _field: Option<String>,
-        default_value: Option<String>,
-    ) -> String {
-        std::env::var(path).unwrap_or_else(|_| default_value.unwrap_or_else(|| "".to_owned()))
+    async fn process(&mut self, _: String, args: String, default_value: Option<String>) -> String {
+        std::env::var(args).unwrap_or_else(|_| default_value.unwrap_or_else(|| "".to_owned()))
     }
 }
 
@@ -46,7 +40,7 @@ mod tests {
         assert_eq!(result, "asd VAR_VALUE".to_owned());
 
         let result = jakarta
-            .interpolate_string("asd ${env:UNSET_KEY:default_value}".to_owned())
+            .interpolate_string("asd ${env:UNSET_KEY:-default_value}".to_owned())
             .await;
 
         assert_eq!(result, "asd default_value".to_owned());
@@ -79,7 +73,7 @@ mod tests {
 
         std::env::set_var("VAR_2", "VAR_VALUE");
         let result = jakarta
-            .interpolate_string("asd ${env:VAR_${env:VAR_3:2}}".to_owned())
+            .interpolate_string("asd ${env:VAR_${env:VAR_3:-2}}".to_owned())
             .await;
 
         assert_eq!(result, "asd VAR_VALUE".to_owned());
